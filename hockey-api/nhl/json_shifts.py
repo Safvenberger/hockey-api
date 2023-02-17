@@ -1,7 +1,6 @@
 import requests
 import pandas as pd
-from tqdm import tqdm
-import time
+from tqdm import trange
 
 
 def get_game_shifts(gameId: int) -> pd.DataFrame:
@@ -100,13 +99,13 @@ def get_game_shifts(gameId: int) -> pd.DataFrame:
     return game_shifts_df
 
 
-def get_season_game_shifts(season: int = 2013) -> pd.DataFrame:
+def get_season_game_shifts(season: int) -> pd.DataFrame:
     """
     Get all shifts from all games during a season.
 
     Parameters
     ----------
-    season : int, default is 2013.
+    season : int
         The season to get shifts from. Is of the type season-season+1. 
         Needs to be 2010 or higher as it is not defined for earlier seasons.
 
@@ -129,12 +128,12 @@ def get_season_game_shifts(season: int = 2013) -> pd.DataFrame:
     n_games = requests.get(season_url).json()["totalGames"]
         
     # Loop over all games in the season
-    for idx in tqdm(range(1, n_games+1)):
+    for idx in trange(1, n_games+1):
         # Specify the gameId
         gameId = f"{season}02{format(idx, '04d')}"
         
-        # Extract the shift information
-        game_shifts = get_shift_information(gameId)
+        # Extract the game shifts
+        game_shifts = get_game_shifts(gameId)
         
         # Store the shift information
         game_shifts_dict[gameId] = game_shifts
