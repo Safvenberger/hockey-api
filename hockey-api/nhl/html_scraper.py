@@ -11,7 +11,7 @@ from typing import Tuple, List
 
 class GameHTML:
     """
-    Extract the events from the HTML report of an NHL game.
+    Extract information from the HTML report of an NHL game.
     
     Attributes:
         game_id: int, the id of the game.
@@ -804,6 +804,7 @@ class GameHTML:
 
 
     def get_shifts(self, home: bool=True):
+        """ Get all shifts from the given game. """
         
         # Determine the team perspective
         if home: 
