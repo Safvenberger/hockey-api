@@ -13,6 +13,12 @@ class GameHTML:
     """
     Extract information from the HTML report of an NHL game.
     
+    Arguments:
+        game_id: int, the id of the game, given as e.g. 2021020001.
+        pbp: bool, if play by play data should be downloaded.
+        shifts: bool, if shift data should be downloaded. 
+        requests_session: optional, the session to use for scraping.
+    
     Attributes:
         game_id: int, the id of the game.
         away_team: str, the name of the away team.
@@ -26,7 +32,8 @@ class GameHTML:
         get_shifts: retrieves all shifts from the home or away team.
     
     """
-    def __init__(self, game_id: int, requests_session: requests.sessions.Session=None):
+    def __init__(self, game_id: int, pbp: bool=True, shifts: bool=True,
+                 requests_session: requests.sessions.Session=None):
         """ Initialize a new game object. """
         
         # Create a new session if none is provided
@@ -37,27 +44,32 @@ class GameHTML:
         self.game_id = game_id
 
         # Save the urls
-        self.pbp_url = self.__get_url(game_id, report_type="PL")
-        self.home_shifts_url = self.__get_url(game_id, report_type="TH")
-        self.away_shifts_url = self.__get_url(game_id, report_type="TV")
+        if pbp:
+            self.pbp_url = self.__get_url(game_id, report_type="PL")
+        if shifts:
+            self.home_shifts_url = self.__get_url(game_id, report_type="TH")
+            self.away_shifts_url = self.__get_url(game_id, report_type="TV")
 
         # Save the parsed HTML tree
-        self.pbp_tree = self.__parse_url(requests_session, report_type="PL")
-        self.home_shifts_tree = self.__parse_url(requests_session, report_type="TH")
-        self.away_shifts_tree = self.__parse_url(requests_session, report_type="TV")
+        if pbp:
+            self.pbp_tree = self.__parse_url(requests_session, report_type="PL")
+        if shifts:
+            self.home_shifts_tree = self.__parse_url(requests_session, report_type="TH")
+            self.away_shifts_tree = self.__parse_url(requests_session, report_type="TV")
 
-        # Extract the event base from the HTML
-        self.event_base = self.__get_event_base()
-
-        # Get team names
-        team_names = self.__get_team_names()
-
-        # Add home and away team names    
-        self.away_team = team_names[0]
-        self.home_team = team_names[1]
-
-        # Get and set the game info
-        self.game_date = self.__get_game_info()
+        if pbp:
+            # Extract the event base from the HTML
+            self.event_base = self.__get_event_base()
+    
+            # Get team names
+            team_names = self.__get_team_names()
+    
+            # Add home and away team names    
+            self.away_team = team_names[0]
+            self.home_team = team_names[1]
+    
+            # Get and set the game info
+            self.game_date = self.__get_game_info()
 
         
     def __get_url(self, game_id: int, report_type: str="PL") -> str:
@@ -477,7 +489,7 @@ class GameHTML:
         nr_players_per_event = players_involved.notna().sum(axis=1)
 
         # Define the first player role
-        players_involved["PlayerRole1"] = np.select(
+        players_involved["PlayerType1"] = np.select(
             [event_type_series.eq("FAC"),
              event_type_series.eq("HIT"),
              event_type_series.isin(["TAKE", "GIVE"]),
@@ -488,7 +500,7 @@ class GameHTML:
             default=np.nan)
 
         # Define the second player role
-        players_involved["PlayerRole2"] = np.select(
+        players_involved["PlayerType2"] = np.select(
             [event_type_series.eq("FAC")   & nr_players_per_event.eq(2),
              event_type_series.eq("HIT")   & nr_players_per_event.eq(2),
              event_type_series.eq("BLOCK") & nr_players_per_event.eq(2),
@@ -498,7 +510,7 @@ class GameHTML:
             default=np.nan)
         
         # Define the third player role
-        players_involved["PlayerRole3"] = np.select(
+        players_involved["PlayerType3"] = np.select(
             [event_type_series.eq("GOAL") & nr_players_per_event.eq(3),
              event_type_series.eq("PENL") & nr_players_per_event.eq(3)],
             ["Assist", "ServedBy"],
@@ -581,13 +593,13 @@ class GameHTML:
                                            event_type_list[non_na_idx],                                                
                                            event_description_list[non_na_idx]],
                                           index=["EventNumber", "PeriodNumber", 
-                                                 "Manpower", "Time", 
+                                                 "Manpower", "EventTime", 
                                                  "EventType", "Description"]).T
         
         return missing_players_df
 
 
-    def get_pbp(self) -> DataFrame:
+    def get_event_data(self) -> DataFrame:
         """ Get all events from the HTML RTSS report. """
         
         # Get the game metadata
@@ -641,7 +653,7 @@ class GameHTML:
                                event_manpower_list[idx_to_keep], event_time_list[idx_to_keep], 
                                event_type_list[idx_to_keep], event_description_list[idx_to_keep]],
                               index=["EventNumber", "PeriodNumber", 
-                                     "Manpower", "Time", 
+                                     "Manpower", "EventTime", 
                                      "EventType", "Description"]).T               
 
         # Combine events and players on the ice
@@ -757,23 +769,23 @@ class GameHTML:
         # Add missing column if needed
         if "Player3" not in events_all.columns:
             events_all["Player3"] = np.nan
-            events_all["PlayerRole3"] = np.nan
+            events_all["PlayerType3"] = np.nan
             
         # Switch player names as they are incorrect when a third player serves the penalty
-        events_all.loc[serving_penalties & events_all.PlayerRole3.ne("nan"), 
+        events_all.loc[serving_penalties & events_all.PlayerType3.ne("nan"), 
                        ["Player3", "Player2"]] = \
-        events_all.loc[serving_penalties & events_all.PlayerRole3.ne("nan"), 
+        events_all.loc[serving_penalties & events_all.PlayerType3.ne("nan"), 
                        ["Player2", "Player3"]].values
         
         # For players serving the penalty of a goalie
-        events_all.loc[serving_penalties & events_all.PlayerRole3.eq("nan") & 
-                       events_all.PlayerRole2.ne("nan"), 
-                       "PlayerRole2"] = "ServedBy"
+        events_all.loc[serving_penalties & events_all.PlayerType3.eq("nan") & 
+                       events_all.PlayerType2.ne("nan"), 
+                       "PlayerType2"] = "ServedBy"
         
         # For players serving a team penalty
-        events_all.loc[serving_penalties & events_all.PlayerRole3.eq("nan") & 
-                       events_all.PlayerRole2.eq("nan"), 
-                       "PlayerRole1"] = "ServedBy"
+        events_all.loc[serving_penalties & events_all.PlayerType3.eq("nan") & 
+                       events_all.PlayerType2.eq("nan"), 
+                       "PlayerType1"] = "ServedBy"
             
         # Determine the winner of faceoffs
         faceoff_winning_team = events_all.loc[
@@ -799,6 +811,11 @@ class GameHTML:
         
         # Remove the erroneous columns
         events_all.drop(erroneous_cols, axis=1, inplace=True)
+        
+        # Add total elapsed time
+        events_all["TotalElapsedTime"] = 1200 * (events_all["PeriodNumber"] - 1) + [
+            60 * int(x[0]) + int(x[1])  for x in events_all["EventTime"].str.split(":")
+            ]
 
         return events_all
 

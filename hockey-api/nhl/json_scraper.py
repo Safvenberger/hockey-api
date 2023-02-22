@@ -8,9 +8,18 @@ class GameJSON:
     """
     Extract information from the JSON report of an NHL game.
     
+    Arguments:
+        game_id: int, the id of the game, given as e.g. 2021020001.
+        pbp: bool, if play by play data should be downloaded.
+        shifts: bool, if shift data should be downloaded. 
+        requests_session: optional, the session to use for scraping.
+    
     Attributes:
         game_id: int, the id of the game.
         url: str, the url of the JSON report. One for play-by-play, and one for shifts.
+        pbp: the play by play data.
+        dressed_for_game: all players listed in the play by play data.
+        shifts: all shifts reported for the game.
     
     Methods:
         get_event_data: retrieves the event data from the game.
@@ -18,7 +27,8 @@ class GameJSON:
         get_shifts: retrieves all shifts from the home and away team.
     
     """
-    def __init__(self, game_id: int, requests_session: requests.sessions.Session=None):
+    def __init__(self, game_id: int, pbp: bool=True, shifts: bool=True,
+                 requests_session: requests.sessions.Session=None):
         """ Initialize a new game object. """
         
         # Create a new session if none is provided
@@ -29,13 +39,17 @@ class GameJSON:
         self.game_id = game_id
 
         # Save the urls
-        self.pbp_url = self.__get_url(game_id, report_type="PL")
-        self.shifts_url = self.__get_url(game_id, report_type="SH")
+        if pbp:
+            self.pbp_url = self.__get_url(game_id, report_type="PL")
+        if shifts:
+            self.shifts_url = self.__get_url(game_id, report_type="SH")
 
         # Run the methods to save the results
-        self.pbp = self.__get_event_data(requests_session)
-        self.dressed_for_game = self.__get_players_dressed_for_game(requests_session)
-        self.shifts = self.__get_game_shifts(requests_session)
+        if pbp:
+            self.pbp = self.__get_event_data(requests_session)
+            self.dressed_for_game = self.__get_players_dressed_for_game(requests_session)
+        if shifts:
+            self.shifts = self.__get_game_shifts(requests_session)
         
     def __get_url(self, game_id: int, report_type: str="PL") -> str:
         """ Get the url used for retrieving data. """
@@ -123,10 +137,7 @@ class GameJSON:
         
         pbp_data["Player3"] = pbp_data["players"].apply(
             lambda x: x[2]["player"]["id"] if type(x) != float and len(x) > 2 else np.nan)
-        
-        pbp_data["Player4"] = pbp_data["players"].apply(
-            lambda x: x[3]["player"]["id"] if type(x) != float and len(x) > 3 else np.nan)
-        
+
         # Extract player roles
         pbp_data["PlayerType1"] = pbp_data["players"].apply(
             lambda x: x[0]["playerType"] if type(x) != float else x)
@@ -137,11 +148,16 @@ class GameJSON:
         pbp_data["PlayerType3"] = pbp_data["players"].apply(
             lambda x: x[2]["playerType"] if type(x) != float and len(x) > 2 else np.nan)
         
-        pbp_data["PlayerType4"] = pbp_data["players"].apply(
-            lambda x: x[3]["playerType"] if type(x) != float and len(x) > 3 else np.nan)
-        
         # Remove player column
         pbp_data.drop("players", axis=1, inplace=True)
+        
+        # Remove "goalie" role
+        pbp_data.loc[pbp_data.PlayerType1.eq("Goalie"), "Player1"] = np.nan
+        pbp_data.loc[pbp_data.PlayerType1.eq("Goalie"), "PlayerType1"] = np.nan
+        pbp_data.loc[pbp_data.PlayerType2.eq("Goalie"), "Player2"] = np.nan
+        pbp_data.loc[pbp_data.PlayerType2.eq("Goalie"), "PlayerType2"] = np.nan
+        pbp_data.loc[pbp_data.PlayerType3.eq("Goalie"), "Player3"] = np.nan
+        pbp_data.loc[pbp_data.PlayerType3.eq("Goalie"), "PlayerType3"] = np.nan
         
         # Rename columns
         pbp_data.rename(columns=column_renaming, inplace=True)
@@ -176,6 +192,13 @@ class GameJSON:
         teams = [json_data["gameData"]["teams"]["away"]["name"],
                  json_data["gameData"]["teams"]["home"]["name"]]
         
+        # Create a player id -> player position mapping for each team
+        away_positions = {player["person"]["id"]: player["position"]["code"] for 
+                          idx_str, player in away_players.items()}
+        
+        home_positions = {player["person"]["id"]: player["position"]["code"] for 
+                          idx_str, player in home_players.items()}
+        
         # Create a player id -> player name mapping for each team
         away_players = {player["person"]["id"]: player["person"]["fullName"] for 
                         idx_str, player in away_players.items()}
@@ -203,6 +226,9 @@ class GameJSON:
                                                    value_name="Player").dropna(
                                                        ).reset_index(drop=True)
             
+        # Add playing position
+        game_players["Position"] = game_players["PlayerId"].replace({**away_positions, **home_positions})
+        
         # Add a column for game id
         game_players.insert(0, column="GameId", value=self.game_id) 
         
