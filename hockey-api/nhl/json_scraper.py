@@ -78,7 +78,7 @@ class GameJSON:
         
         # Extract the play by play data
         pbp_data = pd.json_normalize(json_data["liveData"]["plays"]["allPlays"])
-            
+        
         # Add Game id
         pbp_data["GameId"] = self.game_id
         
@@ -123,7 +123,18 @@ class GameJSON:
         
         # If there is no data
         if len(pbp_data) == 0:
-            return pd.DataFrame(columns=cols).rename(columns=column_renaming)
+            return pd.DataFrame(columns=[
+                "GameId", "AwayTeamName", "HomeTeamName", "EventNumber", "PeriodNumber",
+                "EventTime", "TotalElapsedTime", "EventType", "Team", "GoalsAgainst", "GoalsFor", 
+                "X", "Y", "ScoringManpower", "Type", "GameWinningGoal", "EmptyNet", "PenaltyType",
+                "PenaltyMinutes", "PlayerType1",  "Player1", "PlayerId1", 
+                "PlayerType2", "Player2", "PlayerId2", "PlayerType3", "Player3", "PlayerId3", 
+                "AwayPlayer1", "AwayPlayerId1", "AwayPlayer2", "AwayPlayerId2", 
+                "AwayPlayer3", "AwayPlayerId3", "AwayPlayer4", "AwayPlayerId4", 
+                "AwayPlayer5", "AwayPlayerId5", "AwayPlayer6", "AwayPlayerId6", 
+                "HomePlayer1", "HomePlayerId1", "HomePlayer2", "HomePlayerId2", 
+                "HomePlayer3", "HomePlayerId3", "HomePlayer4", "HomePlayerId4", 
+                "HomePlayer5", "HomePlayerId5", "HomePlayer6", "HomePlayerId6"])
         
         # Select columns
         pbp_data = pbp_data[cols]

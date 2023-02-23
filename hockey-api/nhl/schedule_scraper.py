@@ -1,14 +1,14 @@
 import requests
-from typing import List
+from typing import Union, List
 
 
-def get_number_of_games_in_season(season: int, requests_session: requests.sessions.Session) -> int:
+def get_number_of_games_in_season(season: Union[str, int], requests_session: requests.sessions.Session) -> int:
     """
     Retrieve the number of games for 
 
     Parameters
     ----------
-    season : int
+    season : int or str
         Integer denoting the starting year of the season, e.g., 2021 gives 2021-2022.
     requests_session : requests.sessions.Session
         Session for requests.
@@ -20,8 +20,11 @@ def get_number_of_games_in_season(season: int, requests_session: requests.sessio
 
     """    
     
+    # Convert the season to an integer
+    year = int(season)
+    
     # Url for the season
-    season_url = f"https://statsapi.web.nhl.com/api/v1/schedule?season={season}{season+1}&gameType=R"
+    season_url = f"https://statsapi.web.nhl.com/api/v1/schedule?season={year}{year+1}&gameType=R"
             
     # Number of games played during the season
     n_games = requests_session.get(season_url).json()["totalGames"]

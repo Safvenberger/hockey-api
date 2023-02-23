@@ -714,110 +714,117 @@ class GameHTML:
         meta_data_df.HomeTeamName.replace(self._map_team_tri_to_names(), inplace=True)
         
         # Add meta data to the data frame
-        events_all = pd.concat([meta_data_df, events_with_all_info], axis=1)
+        pbp = pd.concat([meta_data_df, events_with_all_info], axis=1)
         
         # Map team to full name
-        events_all.Team.replace(self._map_team_tri_to_names(), inplace=True)
+        pbp.Team.replace(self._map_team_tri_to_names(), inplace=True)
              
         # Change data type to integer 
-        events_all["Date"] = events_all.Date.astype(int)
-        events_all["EventNumber"] = events_all.EventNumber.astype(int)
-        events_all["PeriodNumber"] = events_all.PeriodNumber.astype(int)
+        pbp["Date"] = pbp.Date.astype(int)
+        pbp["EventNumber"] = pbp.EventNumber.astype(int)
+        pbp["PeriodNumber"] = pbp.PeriodNumber.astype(int)
                 
         # Convert penalty minutes to an integer
-        events_all["PenaltyMinutes"] = events_all.PenaltyMinutes.astype(str).str.replace(" min", "").astype(float)  
+        pbp["PenaltyMinutes"] = pbp.PenaltyMinutes.astype(str).str.replace(" min", "").astype(float)  
         
         # Reduce event number by 2 to account for the extra events before the game
-        if events_all.iloc[0].EventType == "PGSTR":
-            events_all["EventNumber"] -= 2
+        if pbp.iloc[0].EventType == "PGSTR":
+            pbp["EventNumber"] -= 2
         
         # Adjust event number of later periods to account for additional events between periods
-        for period_number in events_all.loc[events_all.PeriodNumber.gt(1)].PeriodNumber.unique():
-            events_all.loc[events_all.PeriodNumber.eq(period_number), "EventNumber"] += 2 * (period_number - 1)
+        for period_number in pbp.loc[pbp.PeriodNumber.gt(1)].PeriodNumber.unique():
+            pbp.loc[pbp.PeriodNumber.eq(period_number), "EventNumber"] += 2 * (period_number - 1)
         
         # Find all delayed penalties and unusual events/double stoppage for a challenge
-        unusual = (events_all.EventType.isin(["DELPEN", "EGT"]) |
-                   (events_all.EventType.eq("STOP") & events_all.EventType.shift(-1).eq("CHL") &
-                    events_all.EventType.shift(-2).eq("STOP")))
+        unusual = (pbp.EventType.isin(["DELPEN", "EGT"]) |
+                   (pbp.EventType.eq("STOP") & pbp.EventType.shift(-1).eq("CHL") &
+                    pbp.EventType.shift(-2).eq("STOP")))
         
         if any(unusual) > 0:
             # Get the unusual events event numbers
-            unusual_event_numbers = events_all.loc[unusual, "EventNumber"].values
+            unusual_event_numbers = pbp.loc[unusual, "EventNumber"].values
             
             # Add the final event number to the array
             unusual_event_numbers = np.concatenate((unusual_event_numbers, 
-                                                    np.array([events_all.EventNumber.max()])))
+                                                    np.array([pbp.EventNumber.max()])))
             
             for idx, event_number in enumerate(unusual_event_numbers[1:]):
                 # Get the event number of the previous unsual event
                 previous_event_number = unusual_event_numbers[idx]
                 
                 # Find the event number that need to be adjusted
-                event_number_to_change = (events_all.EventNumber.gt(previous_event_number) &
-                                          events_all.EventNumber.le(event_number))
+                event_number_to_change = (pbp.EventNumber.gt(previous_event_number) &
+                                          pbp.EventNumber.le(event_number))
                 
                 # Reduce the event number by 1
-                events_all.loc[event_number_to_change, "EventNumber"] -= 1 * (idx + 1)
+                pbp.loc[event_number_to_change, "EventNumber"] -= 1 * (idx + 1)
             
             # Remove delayed penalties and unusual events
-            events_all = events_all.loc[~unusual].copy()
+            pbp = pbp.loc[~unusual].copy()
         
         # All penalties served by another player
-        serving_penalties = (events_all.EventType.eq("PENL") &
-                             events_all.Description.astype(str).str.contains("Served By"))
+        serving_penalties = (pbp.EventType.eq("PENL") &
+                             pbp.Description.astype(str).str.contains("Served By"))
         
         # Add missing column if needed
-        if "Player3" not in events_all.columns:
-            events_all["Player3"] = np.nan
-            events_all["PlayerType3"] = np.nan
+        if "Player3" not in pbp.columns:
+            pbp["Player3"] = np.nan
+            pbp["PlayerType3"] = np.nan
             
         # Switch player names as they are incorrect when a third player serves the penalty
-        events_all.loc[serving_penalties & events_all.PlayerType3.ne("nan"), 
+        pbp.loc[serving_penalties & pbp.PlayerType3.ne("nan"), 
                        ["Player3", "Player2"]] = \
-        events_all.loc[serving_penalties & events_all.PlayerType3.ne("nan"), 
+        pbp.loc[serving_penalties & pbp.PlayerType3.ne("nan"), 
                        ["Player2", "Player3"]].values
         
         # For players serving the penalty of a goalie
-        events_all.loc[serving_penalties & events_all.PlayerType3.eq("nan") & 
-                       events_all.PlayerType2.ne("nan"), 
-                       "PlayerType2"] = "ServedBy"
+        pbp.loc[serving_penalties & pbp.PlayerType3.eq("nan") & 
+                pbp.PlayerType2.ne("nan"), "PlayerType2"] = "ServedBy"
         
         # For players serving a team penalty
-        events_all.loc[serving_penalties & events_all.PlayerType3.eq("nan") & 
-                       events_all.PlayerType2.eq("nan"), 
-                       "PlayerType1"] = "ServedBy"
+        pbp.loc[serving_penalties & pbp.PlayerType3.eq("nan") & 
+                pbp.PlayerType2.eq("nan"), "PlayerType1"] = "ServedBy"
             
         # Determine the winner of faceoffs
-        faceoff_winning_team = events_all.loc[
-            events_all.EventType.eq("FAC"), "Description"].str.extract(
+        faceoff_winning_team = pbp.loc[ pbp.EventType.eq("FAC"), "Description"].str.extract(
                 "(^[A-Z]{3})", expand=False).replace(self._map_team_tri_to_names())
                 
         # Switch the order of players if the home team won the faceoff
-        events_all.loc[faceoff_winning_team.eq(events_all.HomeTeamName),
+        pbp.loc[faceoff_winning_team.eq(pbp.HomeTeamName),
                        ["Player1", "Player2"]] = \
-        events_all.loc[faceoff_winning_team.eq(events_all.HomeTeamName),
+        pbp.loc[faceoff_winning_team.eq(pbp.HomeTeamName),
                        ["Player2", "Player1"]].values
         
         # Find all the columns with players on the ice
-        player_columns = events_all.columns[events_all.columns.str.contains(
+        player_columns = pbp.columns[pbp.columns.str.contains(
             "[HomeAway]Goalie|[HomeAway]Player\d")]
         
         # Reorder the columns in the data to have players on the ice at the end
-        events_all = pd.concat([events_all.drop(player_columns, axis=1), 
-                                events_all[player_columns]], axis=1)
+        pbp = pd.concat([pbp.drop(player_columns, axis=1), 
+                                pbp[player_columns]], axis=1)
 
         # Find columns that should not exist/are erroneous
-        erroneous_cols = events_all.columns[events_all.columns.str.contains("\d{2}|^Player4", regex=True)]
+        erroneous_cols = pbp.columns[pbp.columns.str.contains("\d{2}|^Player4", regex=True)]
         
         # Remove the erroneous columns
-        events_all.drop(erroneous_cols, axis=1, inplace=True)
+        pbp.drop(erroneous_cols, axis=1, inplace=True)
+        
+        # Fill NA time values with a placeholder
+        pbp.EventTime.fillna("20:00", inplace=True)
         
         # Add total elapsed time
-        events_all["TotalElapsedTime"] = 1200 * (events_all["PeriodNumber"] - 1) + [
-            60 * int(x[0]) + int(x[1])  for x in events_all["EventTime"].str.split(":")
+        pbp["TotalElapsedTime"] = 1200 * (pbp["PeriodNumber"] - 1) + [
+            60 * int(x[0]) + int(x[1]) for x in pbp["EventTime"].str.split(":")
             ]
 
-        return events_all
+        # Rename events
+        pbp.EventType.replace({
+            "FAC": "FACEOFF", "STOP": "STOPPAGE", "CHL": "CHALLENGE",
+            "GEND": "GAME END", "PSTR": "PERIOD START", "PEND": "PERIOD END",
+            "GIVE": "GIVEAWAY", "TAKE": "TAKEAWAY", "PENL": "PENALTY",
+            "MISS": "MISSED SHOT", "BLOCK": "BLOCKED SHOT"}, inplace=True)
+    
+        return pbp
 
 
     def get_shifts(self, home: bool=True):
