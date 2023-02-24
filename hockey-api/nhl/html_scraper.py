@@ -15,8 +15,6 @@ class GameHTML:
     
     Arguments:
         game_id: int, the id of the game, given as e.g. 2021020001.
-        pbp: bool, if play by play data should be downloaded.
-        shifts: bool, if shift data should be downloaded. 
         requests_session: optional, the session to use for scraping.
     
     Attributes:
@@ -44,32 +42,27 @@ class GameHTML:
         self.game_id = game_id
 
         # Save the urls
-        if pbp:
-            self.pbp_url = self.__get_url(game_id, report_type="PL")
-        if shifts:
-            self.home_shifts_url = self.__get_url(game_id, report_type="TH")
-            self.away_shifts_url = self.__get_url(game_id, report_type="TV")
+        self.pbp_url = self.__get_url(game_id, report_type="PL")
+        self.home_shifts_url = self.__get_url(game_id, report_type="TH")
+        self.away_shifts_url = self.__get_url(game_id, report_type="TV")
 
         # Save the parsed HTML tree
-        if pbp:
-            self.pbp_tree = self.__parse_url(requests_session, report_type="PL")
-        if shifts:
-            self.home_shifts_tree = self.__parse_url(requests_session, report_type="TH")
-            self.away_shifts_tree = self.__parse_url(requests_session, report_type="TV")
+        self.pbp_tree = self.__parse_url(requests_session, report_type="PL")
+        self.home_shifts_tree = self.__parse_url(requests_session, report_type="TH")
+        self.away_shifts_tree = self.__parse_url(requests_session, report_type="TV")
 
-        if pbp:
-            # Extract the event base from the HTML
-            self.event_base = self.__get_event_base()
-    
-            # Get team names
-            team_names = self.__get_team_names()
-    
-            # Add home and away team names    
-            self.away_team = team_names[0]
-            self.home_team = team_names[1]
-    
-            # Get and set the game info
-            self.game_date = self.__get_game_info()
+        # Extract the event base from the HTML
+        self.event_base = self.__get_event_base()
+
+        # Get team names
+        team_names = self.__get_team_names()
+
+        # Add home and away team names    
+        self.away_team = team_names[0]
+        self.home_team = team_names[1]
+
+        # Get and set the game info
+        self.game_date = self.__get_game_info()
 
         
     def __get_url(self, game_id: int, report_type: str="PL") -> str:
@@ -861,15 +854,15 @@ class GameHTML:
         
         # Create a data frame of the shifts
         shifts = pd.DataFrame(shift_info_text, 
-                              columns=["ShiftNr", "PeriodNumber",
+                              columns=["ShiftNumber", "PeriodNumber",
                                        "ShiftStart", "ShiftEnd", 
                                        "Duration", "Event"]).dropna().reset_index(drop=True)
         # Change column types
-        cols = ["ShiftNr", "PeriodNumber"]
+        cols = ["ShiftNumber", "PeriodNumber"]
         shifts[cols] = shifts[cols].astype(int)
         
         # Create a grouping to indiciate unique players
-        shifts["PlayerNr"] = (shifts.ShiftNr != shifts.ShiftNr.shift() + 1).cumsum()
+        shifts["PlayerNr"] = (shifts.ShiftNumber != shifts.ShiftNumber.shift() + 1).cumsum()
         
         # Create a mapping from plyer nr to player name
         player_mapping = {nr: player for nr, player in zip(shifts["PlayerNr"].unique(), player_names)}
@@ -894,7 +887,12 @@ class GameHTML:
         
         # Insert game id and team
         shifts.insert(0, "GameId", self.game_id)   
-        shifts.insert(1, "Team", self.home_team if home else self.away_team)   
+        shifts.insert(2, "TeamName", self.home_team if home else self.away_team)   
 
+        # Map team name tri-code to full name
+        shifts["TeamName"] = shifts["TeamName"].replace(self._map_team_tri_to_names())
+        
+        shifts.drop("PlayerNr", axis=1, inplace=True)
+        
         return shifts
     

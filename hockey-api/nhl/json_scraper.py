@@ -10,8 +10,6 @@ class GameJSON:
     
     Arguments:
         game_id: int, the id of the game, given as e.g. 2021020001.
-        pbp: bool, if play by play data should be downloaded.
-        shifts: bool, if shift data should be downloaded. 
         requests_session: optional, the session to use for scraping.
     
     Attributes:
@@ -27,8 +25,7 @@ class GameJSON:
         get_shifts: retrieves all shifts from the home and away team.
     
     """
-    def __init__(self, game_id: int, pbp: bool=True, shifts: bool=True,
-                 requests_session: requests.sessions.Session=None):
+    def __init__(self, game_id: int, requests_session: requests.sessions.Session=None):
         """ Initialize a new game object. """
         
         # Create a new session if none is provided
@@ -39,17 +36,13 @@ class GameJSON:
         self.game_id = game_id
 
         # Save the urls
-        if pbp:
-            self.pbp_url = self.__get_url(game_id, report_type="PL")
-        if shifts:
-            self.shifts_url = self.__get_url(game_id, report_type="SH")
+        self.pbp_url = self.__get_url(game_id, report_type="PL")
+        self.shifts_url = self.__get_url(game_id, report_type="SH")
 
         # Run the methods to save the results
-        if pbp:
-            self.pbp = self.__get_event_data(requests_session)
-            self.dressed_for_game = self.__get_players_dressed_for_game(requests_session)
-        if shifts:
-            self.shifts = self.__get_game_shifts(requests_session)
+        self.pbp = self.__get_event_data(requests_session)
+        self.dressed_for_game = self.__get_players_dressed_for_game(requests_session)
+        self.shifts = self.__get_game_shifts(requests_session)
         
     def __get_url(self, game_id: int, report_type: str="PL") -> str:
         """ Get the url used for retrieving data. """
@@ -228,11 +221,11 @@ class GameJSON:
         players_with_team_wide = pd.json_normalize(players_with_team.values())
         
         # Set a new column for team names
-        players_with_team_wide["Team"] = teams
+        players_with_team_wide["TeamName"] = teams
         players_with_team_wide["Side"] = ["Away", "Home"]
         
         # Create a data frame representation of the id name mapping
-        game_players = players_with_team_wide.melt(id_vars=["Team", "Side"], 
+        game_players = players_with_team_wide.melt(id_vars=["TeamName", "Side"], 
                                                    var_name="PlayerId", 
                                                    value_name="Player").dropna(
                                                        ).reset_index(drop=True)
@@ -256,74 +249,84 @@ class GameJSON:
         game_shifts_df = pd.json_normalize(game_shifts)
         
         # Add player name
-        game_shifts_df["playerName"] = game_shifts_df[["firstName", "lastName"]].apply(
+        game_shifts_df["player"] = game_shifts_df[["firstName", "lastName"]].apply(
             lambda x: f"{x.firstName} {x.lastName}", axis=1)
+        
+        # Rename columns
+        game_shifts_df.rename(columns={"startTime": "shiftStart", "endTime": "shiftEnd",
+                                       "period": "periodNumber"}, inplace=True)
         
         # If there is no data for a given game
         if len(game_shifts_df) == 0:
-            return pd.DataFrame(columns=["gameId", "playerId", "playerName", "startTime", "period",
-                                         "endTime", "duration", "teamId", "teamName"])
+            return pd.DataFrame(columns=["GameId", "PlayerId", "Player", "TeamName", 
+                                         "ShiftNumber", "PeriodNumber", 
+                                         "ShiftStart", "ShiftEnd", "Duration"])
         
         # Select the desired columns
-        game_shifts_df = game_shifts_df[["gameId", "playerId", "playerName", "startTime", "period", 
-                                         "endTime", "duration", "teamId", "teamName"]]
+        game_shifts_df = game_shifts_df[["gameId", "playerId", "player", "teamName", 
+                                         "shiftNumber", "periodNumber", 
+                                         "shiftStart", "shiftEnd", "duration"]]
         
         # Remove goals from the data
         game_shifts_df.dropna(inplace=True)
         
         # If there is no data (besides goals) for a given game
         if len(game_shifts_df) == 0:
-            return pd.DataFrame(columns=["gameId", "playerId", "playerName", "startTime", "period",
-                                         "endTime", "duration", "teamId", "teamName"])
+            return pd.DataFrame(columns=["GameId", "PlayerId", "Player", "TeamName", 
+                                         "ShiftNumber", "PeriodNumber", 
+                                         "ShiftStart", "ShiftEnd", "Duration"])
         
         # In case of empty values
-        missing_start_time = game_shifts_df["startTime"].eq("")
-        missing_end_time = game_shifts_df["endTime"].eq("")
+        missing_start_time = game_shifts_df["shiftStart"].eq("")
+        missing_end_time = game_shifts_df["shiftEnd"].eq("")
         
         # Final period in regulation
-        final_period = game_shifts_df["period"].eq(3)
+        final_period = game_shifts_df["periodNumber"].eq(3)
         
         # Final two minutes of the period
-        final_two_minutes = game_shifts_df["startTime"].apply(lambda x: int(x[0:2]) >= 18)
+        final_two_minutes = game_shifts_df["shiftStart"].apply(lambda x: int(x[0:2]) >= 18)
         
         # Update end time for final shifts in regulation
         game_shifts_df.loc[missing_end_time & final_period &
-                           final_two_minutes, "endTime"] = "20:00"
+                           final_two_minutes, "shiftEnd"] = "20:00"
         
         # Update in case of new end times
-        missing_end_time = game_shifts_df["endTime"].eq("")
+        missing_end_time = game_shifts_df["shiftEnd"].eq("")
         
         # Compute start time for missing values
-        game_shifts_df.loc[missing_start_time, "startTime"] = game_shifts_df.loc[missing_start_time, ["endTime", "duration"]].apply(
-            lambda x: f"{int(x.endTime[:2]) - int(x.duration[:2])}:{int(x.endTime[3:]) - int(x.duration[3:])}",
+        game_shifts_df.loc[missing_start_time, "shiftStart"] = game_shifts_df.loc[missing_start_time, ["shiftEnd", "duration"]].apply(
+            lambda x: f"{int(x.shiftEnd[:2]) - int(x.duration[:2])}:{int(x.shiftEnd[3:]) - int(x.duration[3:])}",
             axis=1)  
         
         # Compute end time for missing values
-        game_shifts_df.loc[missing_end_time, "endTime"] = game_shifts_df.loc[missing_end_time, ["startTime", "duration"]].apply(
-            lambda x: f"{int(x.startTime[:2]) + int(x.duration[:2])}:{int(x.startTime[3:]) + int(x.duration[3:])}",
+        game_shifts_df.loc[missing_end_time, "shiftEnd"] = game_shifts_df.loc[missing_end_time, ["shiftStart", "duration"]].apply(
+            lambda x: f"{int(x.shiftStart[:2]) + int(x.duration[:2])}:{int(x.shiftStart[3:]) + int(x.duration[3:])}",
             axis=1)  
         
+        # Fill any missing values for duration
+        game_shifts_df["duration"] = game_shifts_df["duration"].fillna("00:00")
+        
         # Convert time columns to seconds
-        game_shifts_df["startTime"] = [int(minute) * 60 + int(second) for minute, second in 
-                                       game_shifts_df["startTime"].str.split(':')]
-        game_shifts_df["endTime"]   = [int(minute) * 60 + int(second) for minute, second in 
-                                       game_shifts_df["endTime"].str.split(':')]
+        game_shifts_df["shiftStart"] = [int(minute) * 60 + int(second) for minute, second in 
+                                        game_shifts_df["shiftStart"].str.split(':')]
+        game_shifts_df["shiftEnd"]   = [int(minute) * 60 + int(second) for minute, second in 
+                                        game_shifts_df["shiftEnd"].str.split(':')]
         game_shifts_df["duration"]  = [int(minute) * 60 + int(second) for minute, second in 
                                        game_shifts_df["duration"].str.split(':')]
         
         # Combine time with period number to get TotalElapsedTime
-        game_shifts_df["startTime"] = 1200 * (game_shifts_df["period"] - 1) + game_shifts_df["startTime"]
-        game_shifts_df["endTime"]   = 1200 * (game_shifts_df["period"] - 1) + game_shifts_df["endTime"]
+        game_shifts_df["shiftStart"] = 1200 * (game_shifts_df["periodNumber"] - 1) + game_shifts_df["shiftStart"]
+        game_shifts_df["shiftEnd"]   = 1200 * (game_shifts_df["periodNumber"] - 1) + game_shifts_df["shiftEnd"]
 
         # For end times in separate periods
-        period_shift = game_shifts_df.apply(lambda row: row["endTime"] < row["startTime"], 
+        period_shift = game_shifts_df.apply(lambda row: row["shiftEnd"] < row["shiftStart"], 
                                             axis=1)
         
         # Add one period worth of seconds
-        game_shifts_df.loc[period_shift, "endTime"] += 1200
+        game_shifts_df.loc[period_shift, "shiftEnd"] += 1200
 
         # Compute duration to ensure correctness to the highest level
-        game_shifts_df["duration"] = game_shifts_df["endTime"] - game_shifts_df["startTime"]
+        game_shifts_df["duration"] = game_shifts_df["shiftEnd"] - game_shifts_df["shiftStart"]
 
         # Rename columns
         game_shifts_df.columns = (game_shifts_df.columns.str.get(0).str.capitalize() + 

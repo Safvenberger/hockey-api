@@ -26,6 +26,69 @@ def get_player_data() -> DataFrame:
     return players
 
 
+def add_player_ids_to_html_shifts(json_shifts: DataFrame, html_shifts: DataFrame) -> DataFrame:
+    """
+    Add a player id column to the HTML shifts.
+
+    Parameters
+    ----------
+    json_shifts : DataFrame
+        All shifts from the game and its JSON representation.
+    html_shifts : DataFrame
+        All shifts from the game and its HTML representation.
+
+    Returns
+    -------
+    html_shifts : DataFrame
+        Modified HTML shifts with a new column for player id.
+
+    """
+    # Storage for player name and id mapping
+    player_name_to_id_map = {}
+    
+    # Get all unique players from the HTML shifts
+    html_players = html_shifts[["Player", "TeamName"]].drop_duplicates()
+    
+    # Get all unique players from the JSON shifts
+    json_players = json_shifts[["Player", "PlayerId", "TeamName"]].drop_duplicates()
+    
+    # Loop over both teams
+    for team, team_players in html_players.groupby("TeamName"):
+        # Get all players from the current team
+        json_team_players = json_players.loc[json_players.TeamName.eq(team)].copy()
+        
+        # Loop over each player in the team
+        for player in team_players.Player:
+            # Get the closest player from the list
+            match = get_close_matches(player, json_team_players.Player.str.upper().to_list(), n=1)
+        
+            # If there was a match
+            if len(match) > 0:
+                # Find the index of the matched player name
+                match_idx = json_team_players.Player.str.upper().eq(match[0])
+                
+                # Get the player id from the matched player
+                match_player_id = json_team_players.loc[match_idx, "PlayerId"].values[0]
+                
+                # Remove the matched player from the possibilites
+                json_team_players.drop(match_idx[match_idx].index, inplace=True)
+                
+            else:
+                # If there is no match
+                match_player_id = np.nan
+                
+            # Save the player id in the dictionary
+            player_name_to_id_map[player] = match_player_id
+
+    # Copy to avoid changing in-place
+    html_shifts = html_shifts.copy()
+
+    # Add player id as a column
+    html_shifts.insert(1, "PlayerId", html_shifts.Player.replace(player_name_to_id_map))
+
+    return html_shifts
+
+
 def map_player_ids_to_names(json_game) -> DataFrame:
     """
     Add player names to the JSON data.
