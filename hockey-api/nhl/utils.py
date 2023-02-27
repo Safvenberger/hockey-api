@@ -26,6 +26,54 @@ def get_player_data() -> DataFrame:
     return players
 
 
+def adjust_player_roles_html(html_game) -> DataFrame:
+    """
+    Adjust the player roles in the HTML play by play data to match the correct order.
+
+    Parameters
+    ----------
+    html_game : GameHTML
+        Object containing the HTML representation of the game.
+
+    Returns
+    -------
+    html_pbp : DataFrame
+        Modified HTML play by play data frame adjusted player roles.
+
+    """
+    # Get the play by play data from the JSON object
+    html_pbp = html_game.pbp.copy()
+
+    # Find if the player involved was a home player
+    home_player = html_pbp.apply(lambda x: x.PlayerId1 in [x.HomePlayerId1, x.HomePlayerId2, 
+                                                           x.HomePlayerId3, x.HomePlayerId4, 
+                                                           x.HomePlayerId5, x.HomePlayerId6], axis=1)
+    # Find if the player involved was an away player
+    away_player = html_pbp.apply(lambda x: x.PlayerId1 in [x.AwayPlayerId1, x.AwayPlayerId2, 
+                                                           x.AwayPlayerId3, x.AwayPlayerId4, 
+                                                           x.AwayPlayerId5, x.AwayPlayerId6], axis=1)
+    
+    # Determine which team had the event
+    home_team_event = html_pbp.Team.eq(html_pbp.HomeTeamName)
+    away_team_event = html_pbp.Team.eq(html_pbp.AwayTeamName)
+    
+    # Get the players that are in the wrong order
+    home_player_1 = html_pbp.loc[away_team_event & home_player, ["PlayerId1", "Player1"]].values
+    away_player_1 = html_pbp.loc[home_team_event & away_player, ["PlayerId1", "Player1"]].values
+
+    home_player_2 = html_pbp.loc[away_team_event & home_player, ["PlayerId2", "Player2"]].values
+    away_player_2 = html_pbp.loc[home_team_event & away_player, ["PlayerId2", "Player2"]].values
+    
+    # Update the player roles
+    html_pbp.loc[away_team_event & home_player, ["PlayerId1", "Player1"]] = home_player_2
+    html_pbp.loc[home_team_event & away_player, ["PlayerId1", "Player1"]] = away_player_2
+
+    html_pbp.loc[away_team_event & home_player, ["PlayerId2", "Player2"]] = home_player_1
+    html_pbp.loc[home_team_event & away_player, ["PlayerId2", "Player2"]] = away_player_1
+
+    return html_pbp
+
+
 def add_player_ids_to_html_shifts(json_shifts: DataFrame, html_shifts: DataFrame) -> DataFrame:
     """
     Add a player id column to the HTML shifts.
@@ -104,41 +152,41 @@ def map_player_ids_to_names(json_game) -> DataFrame:
         Modified JSON play by play data frame with player names added.
 
     """
-    # Get the data frame from the object
-    pbp = json_game.pbp.copy()
+    # Get the play by play data from the JSON object
+    json_pbp = json_game.pbp.copy()
      
     # Get all players dressed for the game
     players_in_game = json_game.get_players_dressed_for_game()
     
     # Extract the column names of home and away players
-    home_players = pbp.columns.str.extract("(HomePlayer.+)").dropna().values[:, 0]
-    away_players = pbp.columns.str.extract("(AwayPlayer.+)").dropna().values[:, 0]
+    home_players = json_pbp.columns.str.extract("(HomePlayer.+)").dropna().values[:, 0]
+    away_players = json_pbp.columns.str.extract("(AwayPlayer.+)").dropna().values[:, 0]
     
     # Add a new column for player ids
-    pbp[[re.sub("Player", "PlayerId", i) for i in home_players]] = pbp[home_players]
-    pbp[[re.sub("Player", "PlayerId", i) for i in away_players]] = pbp[away_players]
+    json_pbp[[re.sub("Player", "PlayerId", i) for i in home_players]] = json_pbp[home_players]
+    json_pbp[[re.sub("Player", "PlayerId", i) for i in away_players]] = json_pbp[away_players]
     
     # Map player id to player name
     home_player_map = players_in_game.loc[players_in_game.Side.eq("Home")].set_index("PlayerId")["Player"].to_dict()
     away_player_map = players_in_game.loc[players_in_game.Side.eq("Away")].set_index("PlayerId")["Player"].to_dict()
 
     # Remap away player id columns to away player names
-    pbp[away_players] = pbp[away_players].replace(
+    json_pbp[away_players] = json_pbp[away_players].replace(
         away_player_map)
     
     # Remap home player id columns to home player names
-    pbp[home_players] = pbp[home_players].replace(
+    json_pbp[home_players] = json_pbp[home_players].replace(
         home_player_map)
     
     # Add new columns for player involvement and map to player names
     for i in range(1, 4):
-        pbp[f"PlayerId{i}"] = pbp[f"Player{i}"]
+        json_pbp[f"PlayerId{i}"] = json_pbp[f"Player{i}"]
         
-        pbp[f"Player{i}"] = pbp[f"Player{i}"].replace(
+        json_pbp[f"Player{i}"] = json_pbp[f"Player{i}"].replace(
             {**away_player_map, **home_player_map})
     
     # Reorder columns
-    pbp = pbp[
+    json_pbp = json_pbp[
         ["GameId", "AwayTeamName", "HomeTeamName", "EventNumber", "PeriodNumber",
          "EventTime", "TotalElapsedTime", "EventType", "Team", "GoalsAgainst", "GoalsFor", 
          "X", "Y", "ScoringManpower", "Type", "GameWinningGoal", "EmptyNet", "PenaltyType",
@@ -151,7 +199,7 @@ def map_player_ids_to_names(json_game) -> DataFrame:
          "HomePlayer3", "HomePlayerId3", "HomePlayer4", "HomePlayerId4", 
          "HomePlayer5", "HomePlayerId5", "HomePlayer6", "HomePlayerId6"]]
     
-    return pbp
+    return json_pbp
 
 
 def map_player_names_to_ids(json_game, html_game) -> DataFrame:
@@ -167,27 +215,27 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
 
     Returns
     -------
-    pbp : DataFrame
+    html_pbp : DataFrame
         Modified HTML play by play data frame with player names added.
 
     """
     # Get the play by play data form the HTML report
-    pbp = html_game.get_event_data().copy()
+    html_pbp = html_game.get_event_data().copy()
     
     # Get the players dressed for the game
     players_in_game = json_game.get_players_dressed_for_game()
     
     # Extract the column names of home and away players
-    home_players = pbp.columns.str.extract("(HomePlayer.+)").dropna().values[:, 0]
-    away_players = pbp.columns.str.extract("(AwayPlayer.+)").dropna().values[:, 0]
+    home_players = html_pbp.columns.str.extract("(HomePlayer.+)").dropna().values[:, 0]
+    away_players = html_pbp.columns.str.extract("(AwayPlayer.+)").dropna().values[:, 0]
     
     # Column names for id columns
     home_player_ids = [re.sub("Player", "PlayerId", i) for i in home_players]
     away_player_ids = [re.sub("Player", "PlayerId", i) for i in away_players]
     
     # Add a new column for player ids
-    pbp[[re.sub("Player", "PlayerId", i) for i in home_players]] = pbp[home_players]
-    pbp[[re.sub("Player", "PlayerId", i) for i in away_players]] = pbp[away_players]
+    html_pbp[[re.sub("Player", "PlayerId", i) for i in home_players]] = html_pbp[home_players]
+    html_pbp[[re.sub("Player", "PlayerId", i) for i in away_players]] = html_pbp[away_players]
     
     # Map player id to player name
     home_player_map = players_in_game.loc[players_in_game.Side.eq("Home")].set_index("Player")["PlayerId"].to_dict()
@@ -198,20 +246,20 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
     away_player_map = {player.upper(): player_id for player, player_id in away_player_map.items()}
 
     # Remap home player id columns to home player names
-    pbp[home_player_ids] = pbp[home_player_ids].replace(
+    html_pbp[home_player_ids] = html_pbp[home_player_ids].replace(
         home_player_map)
     
     # Remap away player id columns to away player names
-    pbp[away_player_ids] = pbp[away_player_ids].replace(
+    html_pbp[away_player_ids] = html_pbp[away_player_ids].replace(
         away_player_map)
     
     # Fix any possible unmatched names
-    unmatched_home = any(pbp[home_player_ids].dtypes == "object")
-    unmatched_away = any(pbp[away_player_ids].dtypes == "object")
+    unmatched_home = any(html_pbp[home_player_ids].dtypes == "object")
+    unmatched_away = any(html_pbp[away_player_ids].dtypes == "object")
     
     if unmatched_home:
         # Find all home players
-        unique_home_players = pbp[home_player_ids].melt().value.dropna().unique()
+        unique_home_players = html_pbp[home_player_ids].melt().value.dropna().unique()
         
         # Find the unmapped home players
         unmapped_home_players = [player for player in unique_home_players if isinstance(player, str)]
@@ -235,12 +283,12 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
             del home_player_map[unmapped]
     
         # Remap home player id columns to home player names
-        pbp[home_player_ids] = pbp[home_player_ids].replace(
+        html_pbp[home_player_ids] = html_pbp[home_player_ids].replace(
             home_player_map)
         
     if unmatched_away:
         # Find all away players
-        unique_away_players = pbp[away_player_ids].melt().value.dropna().unique()
+        unique_away_players = html_pbp[away_player_ids].melt().value.dropna().unique()
         
         # Find the unmapped away players
         unmapped_away_players = [player for player in unique_away_players if isinstance(player, str)]
@@ -264,22 +312,22 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
             del away_player_map[unmapped]
     
         # Remap away player id columns to away player names
-        pbp[away_player_ids] = pbp[away_player_ids].replace(
+        html_pbp[away_player_ids] = html_pbp[away_player_ids].replace(
             away_player_map)
     
     # Add new columns for player involvement and map to player names
     for i in range(1, 4):
-        pbp[f"PlayerId{i}"] = pbp[f"Player{i}"]
+        html_pbp[f"PlayerId{i}"] = html_pbp[f"Player{i}"]
         
-        pbp[f"PlayerId{i}"] = pbp[f"PlayerId{i}"].replace(
+        html_pbp[f"PlayerId{i}"] = html_pbp[f"PlayerId{i}"].replace(
             {**away_player_map, **home_player_map})    
         
     # Map goalie names to ids
-    pbp["HomeGoalieId"] = pbp["HomeGoalieName"].replace(home_player_map)
-    pbp["AwayGoalieId"] = pbp["AwayGoalieName"].replace(away_player_map)
+    html_pbp["HomeGoalieId"] = html_pbp["HomeGoalieName"].replace(home_player_map)
+    html_pbp["AwayGoalieId"] = html_pbp["AwayGoalieName"].replace(away_player_map)
         
     # Reorder columns
-    pbp = pbp[
+    html_pbp = html_pbp[
         ["GameId", "Date", "AwayTeamName", "HomeTeamName", "EventNumber", 
          "PeriodNumber", "Manpower", "EventTime", "TotalElapsedTime",
          "EventType", "Description", "Team", "Zone", "ShotType", "PenaltyShot", 
@@ -294,7 +342,7 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
          "HomePlayer5", "HomePlayerId5", "HomePlayer6", "HomePlayerId6",
          "HomeGoalieOnIce", "HomeGoalieName", "HomeGoalieId"]]
     
-    return pbp
+    return html_pbp
 
 
 def standardize_coordinates(pbp: DataFrame) -> DataFrame:
@@ -321,13 +369,12 @@ def standardize_coordinates(pbp: DataFrame) -> DataFrame:
     pbp["IsHome"] = pbp.Team.eq(pbp.HomeTeamName)
         
     # Check if the game was in overtime 
-    pbp["Overtime"] = pbp.PeriodNumber.eq(4)
+    pbp["Overtime"] = pbp.PeriodNumber.ge(4)
     
     # Get all shot events in regulation where the goalie is on the ice
     shot_events = pbp.loc[pbp.EventType.isin(["GOAL", "MISSED SHOT", "SHOT"]) &
                           ((pbp.IsHome & pbp.AwayGoalieOnIce) | 
-                           (~pbp.IsHome & pbp.HomeGoalieOnIce)) &
-                          pbp.PeriodNumber.lt(5)]
+                           (~pbp.IsHome & pbp.HomeGoalieOnIce))]
                                   
     # Compute the game median x-coordinate and number of shots by group
     game_median_x = shot_events.groupby(["GameId", "IsHome", "PeriodNumber", "Overtime"], 

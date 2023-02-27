@@ -857,9 +857,16 @@ class GameHTML:
                               columns=["ShiftNumber", "PeriodNumber",
                                        "ShiftStart", "ShiftEnd", 
                                        "Duration", "Event"]).dropna().reset_index(drop=True)
+        
+        # Replace "OT" with a 4 for period number and 5 for SO
+        shifts["PeriodNumber"] = shifts.PeriodNumber.replace({"OT": 4, "SO": 5})
+        
+        # Replace any other non-numeric characters with zero
+        shifts["PeriodNumber"] = shifts["PeriodNumber"].replace({"\D+": "0"}, regex=True)
+        
         # Change column types
         cols = ["ShiftNumber", "PeriodNumber"]
-        shifts[cols] = shifts[cols].astype(int)
+        shifts[cols] = shifts[cols].astype(int, errors="ignore")
         
         # Create a grouping to indiciate unique players
         shifts["PlayerNr"] = (shifts.ShiftNumber != shifts.ShiftNumber.shift() + 1).cumsum()
