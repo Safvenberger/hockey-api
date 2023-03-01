@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "hockey-api"
+version = "0.1.0"
+description = "Scraper for ice hockey data"
+authors = ["Rasmus Säfvenberg <rasmus.safvenberg@gmail.com>"]
+license = "gpl-3.0"
+readme = "README.md"
+packages = [{include = "hockey_api"}]
+homepage = "https://github.com/Safvenberger/hockey-api"
+repository = "https://github.com/Safvenberger/hockey-api"
+keywords = ["scraping", "hockey", "sports analytics"]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<4.0"
+numpy = "^1.22.3"
+pandas = "^1.3.4"
+pandera = "^0.9.0"
+requests = "^2.26.0"
+selectolax = "^0.3.11"
+tqdm = "^4.64.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
