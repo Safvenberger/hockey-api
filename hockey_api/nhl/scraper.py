@@ -1,8 +1,8 @@
-from html_scraper import GameHTML
-from json_scraper import GameJSON
-from merge_data import merge_json_pbp_and_shifts, merge_json_and_html_pbp, merge_json_and_html_shifts
-from schedule_scraper import get_number_of_games_in_season, get_game_ids_between_dates
-from utils import map_player_names_to_ids, map_player_ids_to_names, standardize_coordinates, \
+from hockey_api.nhl.html_scraper import GameHTML
+from hockey_api.nhl.json_scraper import GameJSON
+from hockey_api.nhl.merge_data import merge_json_pbp_and_shifts, merge_json_and_html_pbp, merge_json_and_html_shifts
+from hockey_api.nhl.schedule_scraper import get_number_of_games_in_season, get_game_ids_between_dates
+from hockey_api.nhl.utils import map_player_names_to_ids, map_player_ids_to_names, standardize_coordinates, \
     add_player_ids_to_html_shifts, adjust_player_roles_html
 import pandas as pd
 import requests
