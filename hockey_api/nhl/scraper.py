@@ -11,6 +11,7 @@ from pandera.typing import DataFrame
 from tqdm import tqdm, trange
 from time import sleep
 from json import JSONDecodeError
+import warnings
 
 
 def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
@@ -33,11 +34,19 @@ def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
     # Specify a requests session
     requests_session = requests.Session()
     
-    # Get the JSON data
-    json_game = GameJSON(game_id, requests_session)
+    try:
+        # Get the JSON data
+        json_game = GameJSON(game_id, requests_session)
+    except KeyError:
+        warnings.warn("The game id provided does not exist, exiting.")
+        return None
     
-    # Get the HTML data
-    html_game = GameHTML(game_id, requests_session)
+    try:
+        # Get the HTML data
+        html_game = GameHTML(game_id, requests_session)
+    except ValueError:
+        warnings.warn("The game id provided does not exist, exiting.")
+        return None
     
     # Merge json play by play and shifts
     try:
