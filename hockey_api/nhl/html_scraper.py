@@ -269,7 +269,8 @@ class GameHTML:
         """ Get the players involved in the event from the event description."""
     
         # Get all players who were involved
-        event_players_list = [re.findall("\#\d+ [\w+'-]+", description)
+        event_players_list = [re.findall("\#\d+ [\w+'-]+", 
+                                         re.sub("\.", "", description))
                               if not isinstance(description, float) else np.nan
                               for description in event_description_list]
         
@@ -400,7 +401,7 @@ class GameHTML:
                         player_list in players]
 
         # Create a nested tuple of (# LAST NAME, FULL NAME)
-        player_number_name = [[(f"#{player.text()} {player.attributes['title'].split(' - ')[1].split()[1]}", 
+        player_number_name = [[(f"#{player.text()} {player.attributes['title'].split(' - ')[1].split()[1].replace('.', '')}", 
                                 f"{player.attributes['title'].split(' - ')[1]}")
                                if bool(re.search("[A-Z]", player.attributes["title"])) else None
                                for player in player_list ] for

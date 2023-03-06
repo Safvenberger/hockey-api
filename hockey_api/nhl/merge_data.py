@@ -352,9 +352,10 @@ def merge_json_and_html_pbp(json_game, html_game) -> DataFrame:
                 # Get the current length
                 curr_len = len(closest_time)
                 
-                # Find the player involved with the event
-                closest_time = closest_time.loc[closest_time.PlayerId1.eq(event.PlayerId1) |
-                                                np.isnan(event.PlayerId1)].copy()
+                if event.PlayerId1 is not None:
+                    # Find the player involved with the event
+                    closest_time = closest_time.loc[closest_time.PlayerId1.eq(event.PlayerId1) |
+                                                    np.isnan(event.PlayerId1)].copy()
                 
                 if len(closest_time) > 1:
                     # If there are still more than one match, use the first one
