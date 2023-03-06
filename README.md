@@ -83,6 +83,7 @@ To get in contact with me send me an email at rasmus.safvenberg@gmail.com.
 
 ## Copyright
 Copyright (C) 2022-2023 Rasmus Säfvenberg
+
 This file is part of hockey_api
 
 hockey_api is free software: you can redistribute it and/or modify

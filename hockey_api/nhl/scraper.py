@@ -38,21 +38,21 @@ def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
         # Get the JSON data
         json_game = GameJSON(game_id, requests_session)
     except KeyError:
-        warnings.warn("The game id provided does not exist, exiting.")
+        warnings.warn("The game id provided does not exist, returning None.")
         return None
     
     try:
         # Get the HTML data
         html_game = GameHTML(game_id, requests_session)
     except ValueError:
-        warnings.warn("The game id provided does not exist, exiting.")
+        warnings.warn("The game id provided does not exist, returning None.")
         return None
     
     # Merge json play by play and shifts
     try:
         json_game.pbp = merge_json_pbp_and_shifts(json_game)
-    except ValueError:
-        print("No JSON data to merge.")
+    except (IndexError, ValueError):
+        print("No JSON data to merge. Only using HTML data.")
 
     # Add player names/ids to the data sources
     json_game.pbp = map_player_ids_to_names(json_game)
@@ -129,13 +129,25 @@ def scrape_list_of_games(game_id_list: List) -> Tuple[DataFrame, DataFrame]:
         
         try:
             # Scrape the game
-            game, shifts = scrape_game(game_id)
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
+                
         except KeyError: 
             print(f"Scraping failed for game: {game_id}. Returning empty data frame.")
                     
         except JSONDecodeError:
             print("JSON error found, waiting 10 seconds before trying again.")
             sleep(10)
+            
+            # Scrape the game
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
         
         # Save the result in the dictionary
         game_dict[game_id] = game
@@ -206,13 +218,25 @@ def scrape_date_range(start_date: str, end_date: str=None) -> Tuple[DataFrame, D
         
         try:
             # Scrape the game
-            game, shifts = scrape_game(game_id)
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
+            
         except KeyError: 
             print(f"Scraping failed for game: {game_id}. Returning empty data frame.")
                     
         except JSONDecodeError:
             print("JSON error found, waiting 10 seconds before trying again.")
             sleep(10)
+            
+            # Scrape the game
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
             
         # Save the result in the dictionary
         game_dict[game_id] = game
@@ -297,8 +321,13 @@ def scrape_season(season: Union[str, int], season_type: str="R") -> Tuple[DataFr
         
         try:
             # Scrape the game
-            game, shifts = scrape_game(game_id)
-        except KeyError: 
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
+                
+        except (IndexError, ValueError, KeyError): 
             print(f"Scraping failed for game: {game_id}. Returning empty data frame.")
                     
         except JSONDecodeError:
@@ -306,7 +335,11 @@ def scrape_season(season: Union[str, int], season_type: str="R") -> Tuple[DataFr
             sleep(10)
             
             # Scrape the game
-            game, shifts = scrape_game(game_id)
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
         
         # Save the result in the dictionary
         game_dict[game_id] = game
