@@ -315,12 +315,33 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
         html_pbp[away_player_ids] = html_pbp[away_player_ids].replace(
             away_player_map)
     
+    # Find all unique player names among the roles
+    player_names = pd.Series(html_pbp[["Player1", "Player2", "Player3"]].melt().value.dropna().unique())
+    
+    # Combine away and home perspective
+    player_maps = {**away_player_map, **home_player_map}
+    
+    # Check if there are any missing player names
+    missing_maps = ~player_names.isin(player_maps)
+    
+    if any(missing_maps):
+        # Name of the player(s) not mapped
+        keys = player_names[missing_maps].values
+        
+        # Set each missing map to nan
+        for key in keys:
+            player_maps[key] = np.nan 
+    
     # Add new columns for player involvement and map to player names
     for i in range(1, 4):
+        # Initialize new column
         html_pbp[f"PlayerId{i}"] = html_pbp[f"Player{i}"]
         
-        html_pbp[f"PlayerId{i}"] = html_pbp[f"PlayerId{i}"].replace(
-            {**away_player_map, **home_player_map})    
+        # Map names to ids
+        player_ids = html_pbp[f"PlayerId{i}"].replace(player_maps)    
+        
+        # Save as new column in play by play data
+        html_pbp[f"PlayerId{i}"] = player_ids
         
     # Map goalie names to ids
     html_pbp["HomeGoalieId"] = html_pbp["HomeGoalieName"].replace(home_player_map)
