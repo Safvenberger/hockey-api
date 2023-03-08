@@ -6,12 +6,12 @@ from hockey_api.nhl.utils import map_player_names_to_ids, map_player_ids_to_name
     add_player_ids_to_html_shifts, adjust_player_roles_html
 import pandas as pd
 import requests
-from typing import List, Tuple, Union
-from pandera.typing import DataFrame
 from tqdm import tqdm, trange
 from time import sleep
 from json import JSONDecodeError
-import warnings
+from typing import List, Tuple, Union
+from pandera.typing import DataFrame
+from requests.exceptions import ConnectionError
 
 
 def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
@@ -34,28 +34,39 @@ def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
     # Specify a requests session
     requests_session = requests.Session()
     
+    # Counter of failed scraping
+    failed = 0
+    
     try:
         # Get the JSON data
         json_game = GameJSON(game_id, requests_session)
     except KeyError:
-        warnings.warn("The game id provided does not exist, returning None.")
-        return None
+        failed += 1
+    
+    # Merge json play by play and shifts
+    try:
+        json_game.pbp = merge_json_pbp_and_shifts(json_game)
+    except (IndexError, ValueError, NameError, UnboundLocalError):
+        if failed == 0:
+            print(f"No JSON data/shifts for game {game_id} to merge. Only using HTML data.")
+        failed += 1
     
     try:
         # Get the HTML data
         html_game = GameHTML(game_id, requests_session)
     except ValueError:
-        warnings.warn("The game id provided does not exist, returning None.")
-        return None
+        failed += 1
     
-    # Merge json play by play and shifts
-    try:
-        json_game.pbp = merge_json_pbp_and_shifts(json_game)
-    except (IndexError, ValueError):
-        print("No JSON data to merge. Only using HTML data.")
+    # If both the HTML and JSON retrievals failed
+    if failed >= 2:
+        print(f"The game id {game_id} provided does not exist, returning None.")
+        return None
 
     # Add player names/ids to the data sources
-    json_game.pbp = map_player_ids_to_names(json_game)
+    try:
+        json_game.pbp = map_player_ids_to_names(json_game)
+    except (IndexError, ValueError):
+        print(f"Game {game_id} has issues with players on the ice in the JSON data.")
     html_game.pbp = map_player_names_to_ids(json_game, html_game)
 
     # Adjust player roles in the HTML data
@@ -75,8 +86,16 @@ def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
     # Add the player id column to the HTML shifts
     html_shifts = add_player_ids_to_html_shifts(json_shifts, html_shifts)
         
-    # Merge the shifts from both sources
-    merged_shifts = merge_json_and_html_shifts(json_shifts, html_shifts)
+    # If there are JSON shifts
+    if len(json_shifts) > 0:
+        # Remove any player ids without a match, i.e. NaN
+        html_shifts.dropna(subset=["PlayerId"], inplace=True)    
+                
+        # Merge the shifts from both sources
+        merged_shifts = merge_json_and_html_shifts(json_shifts, html_shifts)
+    else:
+        # Placeholder value
+        merged_shifts = html_shifts.fillna(-1)
     
     return merged_game, merged_shifts
 
@@ -135,9 +154,20 @@ def scrape_list_of_games(game_id_list: List) -> Tuple[DataFrame, DataFrame]:
             if scraped_data is not None:
                 game, shifts = scraped_data
                 
-        except KeyError: 
+        except (IndexError, ValueError, KeyError): 
             print(f"Scraping failed for game: {game_id}. Returning empty data frame.")
                     
+        except ConnectionError:
+            print("A connection error occurred, waiting 5 minutes before trying again...")
+            sleep(300)
+            
+            # Scrape the game
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
+            
         except JSONDecodeError:
             print("JSON error found, waiting 10 seconds before trying again.")
             sleep(10)
@@ -223,10 +253,21 @@ def scrape_date_range(start_date: str, end_date: str=None) -> Tuple[DataFrame, D
             # Check if the scraping worked
             if scraped_data is not None:
                 game, shifts = scraped_data
-            
-        except KeyError: 
+        
+        except (IndexError, ValueError, KeyError): 
             print(f"Scraping failed for game: {game_id}. Returning empty data frame.")
-                    
+            
+        except ConnectionError:
+            print("A connection error occurred, waiting 5 minutes before trying again...")
+            sleep(300)
+            
+            # Scrape the game
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data
+            
         except JSONDecodeError:
             print("JSON error found, waiting 10 seconds before trying again.")
             sleep(10)
@@ -329,7 +370,18 @@ def scrape_season(season: Union[str, int], season_type: str="R") -> Tuple[DataFr
                 
         except (IndexError, ValueError, KeyError): 
             print(f"Scraping failed for game: {game_id}. Returning empty data frame.")
-                    
+        
+        except ConnectionError:
+            print("A connection error occurred, waiting 5 minutes before trying again...")
+            sleep(300)
+            
+            # Scrape the game
+            scraped_data = scrape_game(game_id)
+            
+            # Check if the scraping worked
+            if scraped_data is not None:
+                game, shifts = scraped_data            
+            
         except JSONDecodeError:
             print("JSON error found, waiting 10 seconds before trying again.")
             sleep(10)

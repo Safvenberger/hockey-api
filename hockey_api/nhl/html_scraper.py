@@ -838,9 +838,10 @@ class GameHTML:
                         for player in player_names_css]
         
         # Switch order of first and last names
-        player_names = [f"{re.findall('(?<=, ).+', player)[0]} {re.findall('.+(?=, )', player)[0]}"
+        player_names = [f"{re.findall('(?<=, ).+', player)[0]} {re.findall('.+(?=, )', player)[0]}" if
+                        len(re.sub("[\s,]", "", player)) > 0 else "Unknown"
                         for player in player_names]
-        
+
         # Find all shifts
         shifts = tree.css("tr[class$=Color]")
         

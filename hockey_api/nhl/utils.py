@@ -3,6 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 from difflib import get_close_matches
+from itertools import chain
 from pandera.typing import DataFrame
 
 
@@ -159,8 +160,8 @@ def map_player_ids_to_names(json_game) -> DataFrame:
     players_in_game = json_game.get_players_dressed_for_game()
     
     # Extract the column names of home and away players
-    home_players = json_pbp.columns.str.extract("(HomePlayer.+)").dropna().values[:, 0]
-    away_players = json_pbp.columns.str.extract("(AwayPlayer.+)").dropna().values[:, 0]
+    home_players = json_pbp.columns.str.extract("(HomePlayer[1-6])").dropna().values[:, 0]
+    away_players = json_pbp.columns.str.extract("(AwayPlayer[1-6])").dropna().values[:, 0]
     
     # Add a new column for player ids
     json_pbp[[re.sub("Player", "PlayerId", i) for i in home_players]] = json_pbp[home_players]
@@ -185,19 +186,39 @@ def map_player_ids_to_names(json_game) -> DataFrame:
         json_pbp[f"Player{i}"] = json_pbp[f"Player{i}"].replace(
             {**away_player_map, **home_player_map})
     
+    # Create a (nested) list of all player role columns
+    player_role_columns = [json_pbp.columns[json_pbp.columns.str.contains(
+        f"^Player{i}$|^PlayerType{i}")].sort_values(ascending=False).union(
+        json_pbp.columns[json_pbp.columns.str.contains(f"^PlayerId{i}")], 
+        sort=False).tolist() for i in range(1, 4)]
+    
+    # Unnest the list of lists into a list
+    player_role_columns = list(chain.from_iterable(player_role_columns))
+    
+    # Create a (nested) list of all away players
+    away_player_columns = [json_pbp.columns[json_pbp.columns.str.contains(
+        f"AwayPlayer{i}")].sort_values(ascending=False).union(
+        json_pbp.columns[json_pbp.columns.str.contains(f"AwayPlayerId{i}")], 
+        sort=False).tolist() for i in range(1, 7)]
+    
+    # Unnest the list of lists into a list        
+    away_player_columns = list(chain.from_iterable(away_player_columns))
+    
+    # Create a (nested) list of all home players
+    home_player_columns = [json_pbp.columns[json_pbp.columns.str.contains(
+        f"HomePlayer{i}")].sort_values(ascending=False).union(
+        json_pbp.columns[json_pbp.columns.str.contains(f"HomePlayerId{i}")], 
+        sort=False).tolist() for i in range(1, 7)]
+    
+    # Unnest the list of lists into a list        
+    home_player_columns = list(chain.from_iterable(home_player_columns))
+    
     # Reorder columns
     json_pbp = json_pbp[
         ["GameId", "AwayTeamName", "HomeTeamName", "EventNumber", "PeriodNumber",
          "EventTime", "TotalElapsedTime", "EventType", "Team", "GoalsAgainst", "GoalsFor", 
          "X", "Y", "ScoringManpower", "Type", "GameWinningGoal", "EmptyNet", "PenaltyType",
-         "PenaltyMinutes", "PlayerType1",  "Player1", "PlayerId1", 
-         "PlayerType2", "Player2", "PlayerId2", "PlayerType3", "Player3", "PlayerId3", 
-         "AwayPlayer1", "AwayPlayerId1", "AwayPlayer2", "AwayPlayerId2", 
-         "AwayPlayer3", "AwayPlayerId3", "AwayPlayer4", "AwayPlayerId4", 
-         "AwayPlayer5", "AwayPlayerId5", "AwayPlayer6", "AwayPlayerId6", 
-         "HomePlayer1", "HomePlayerId1", "HomePlayer2", "HomePlayerId2", 
-         "HomePlayer3", "HomePlayerId3", "HomePlayer4", "HomePlayerId4", 
-         "HomePlayer5", "HomePlayerId5", "HomePlayer6", "HomePlayerId6"]]
+         "PenaltyMinutes"] + player_role_columns + away_player_columns + home_player_columns]
     
     return json_pbp
 
@@ -226,8 +247,8 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
     players_in_game = json_game.get_players_dressed_for_game()
     
     # Extract the column names of home and away players
-    home_players = html_pbp.columns.str.extract("(HomePlayer.+)").dropna().values[:, 0]
-    away_players = html_pbp.columns.str.extract("(AwayPlayer.+)").dropna().values[:, 0]
+    home_players = html_pbp.columns.str.extract("(HomePlayer[1-6])").dropna().values[:, 0]
+    away_players = html_pbp.columns.str.extract("(AwayPlayer[1-6])").dropna().values[:, 0]
     
     # Column names for id columns
     home_player_ids = [re.sub("Player", "PlayerId", i) for i in home_players]
