@@ -67,6 +67,7 @@ def scrape_game(game_id: Union[str, int]) -> Tuple[DataFrame, DataFrame]:
         json_game.pbp = map_player_ids_to_names(json_game)
     except (IndexError, ValueError):
         print(f"Game {game_id} has issues with players on the ice in the JSON data.")
+
     html_game.pbp = map_player_names_to_ids(json_game, html_game)
 
     # Adjust player roles in the HTML data

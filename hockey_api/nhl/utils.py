@@ -246,6 +246,24 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
     # Get the players dressed for the game
     players_in_game = json_game.get_players_dressed_for_game()
     
+    # Get the players from the shifts in the JSON representation
+    json_shifts = json_game.get_shifts().drop_duplicates("PlayerId")
+    
+    # Combine players dressed for the game and shifts
+    all_players = players_in_game.merge(json_shifts[["GameId", "PlayerId", "Player", "TeamName"]],
+                                        how="outer")
+    
+    # Do a self-join to fill values for the side
+    all_players_unique = all_players.drop("Side", axis=1).merge(
+        all_players[["TeamName", "Side"]].drop_duplicates(), 
+        on="TeamName", how="outer").dropna(subset=["Side"])
+    
+    # Fill NA values for position with N/A to match dressed for game structure
+    all_players_unique["Position"] = all_players_unique["Position"].fillna("N/A")
+    
+    # Reset the index and overwrite players in game
+    players_in_game = all_players_unique.reset_index(drop=True)    
+    
     # Extract the column names of home and away players
     home_players = html_pbp.columns.str.extract("(HomePlayer[1-6])").dropna().values[:, 0]
     away_players = html_pbp.columns.str.extract("(AwayPlayer[1-6])").dropna().values[:, 0]
@@ -294,15 +312,21 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
         
         # Loop through all unmapped players
         for unmapped_home_player in unmapped_home_players:
-            # Get the closest match from the unmapped players
-            unmapped = get_close_matches(unmapped_home_player, unmapped_home_player_ids, n=1)[0]
-            
-            # Save the name in the dictionary
-            home_player_map[unmapped_home_player] = home_player_map[unmapped]
-            
-            # Delete the other name
-            del home_player_map[unmapped]
-    
+            try:
+                # Get the closest match from the unmapped players
+                unmapped = get_close_matches(unmapped_home_player, unmapped_home_player_ids, n=1)[0]
+                
+                # Save the name in the dictionary
+                home_player_map[unmapped_home_player] = home_player_map[unmapped]
+                
+                # Delete the other name
+                del home_player_map[unmapped]
+        
+            except IndexError:
+                print(f"No player match found for {unmapped_home_player}, mapping -1.")
+                # Default value
+                home_player_map[unmapped_home_player] = -1
+                
         # Remap home player id columns to home player names
         html_pbp[home_player_ids] = html_pbp[home_player_ids].replace(
             home_player_map)
@@ -320,18 +344,24 @@ def map_player_names_to_ids(json_game, html_game) -> DataFrame:
         # Find all players who were not matched
         unmapped_away_player_ids = {player: player_id for player, player_id in away_player_map.items() if
                                     player_id not in mapped_away_player_ids}
-        
+ 
         # Loop through all unmapped players
         for unmapped_away_player in unmapped_away_players:
-            # Get the closest match from the unmapped players
-            unmapped = get_close_matches(unmapped_away_player, unmapped_away_player_ids, n=1)[0]
-            
-            # Save the name in the dictionary
-            away_player_map[unmapped_away_player] = away_player_map[unmapped]
-            
-            # Delete the other name
-            del away_player_map[unmapped]
-    
+            try:
+                # Get the closest match from the unmapped players
+                unmapped = get_close_matches(unmapped_away_player, unmapped_away_player_ids, n=1)[0]
+                
+                # Save the name in the dictionary
+                away_player_map[unmapped_away_player] = away_player_map[unmapped]
+                
+                # Delete the other name
+                del away_player_map[unmapped]
+        
+            except IndexError:
+                print(f"No player match found for {unmapped_away_player}, mapping -1.")
+                # Default value
+                away_player_map[unmapped_away_player] = -1
+                
         # Remap away player id columns to away player names
         html_pbp[away_player_ids] = html_pbp[away_player_ids].replace(
             away_player_map)
